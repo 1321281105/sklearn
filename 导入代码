@@ -1,0 +1,43 @@
+首先让我们加载数据集，定义问题的目标变量:
+
+#import packages
+import pandas as pd
+import numpy as np
+ 
+#to plot within notebook
+import matplotlib.pyplot as plt
+%matplotlib inline
+ 
+#setting figure size
+from matplotlib.pylab import rcParams
+rcParams['figure.figsize'] = 20,10
+ 
+#for normalizing data
+from sklearn.preprocessing import MinMaxScaler
+scaler = MinMaxScaler(feature_range=(0, 1))
+ 
+#read the file
+df = pd.read_csv('NSE-TATAGLOBAL(1).csv')
+ 
+#print the head
+df.head()
+
+数据集中有多个变量——日期（date）、开盘价(open)、最高价(high)、最低价(low)、最后交易价(last)、收盘价(close)、总交易额(total_trade_quantity)和营业额(turnover)。
+
+开盘价和收盘价代表股票在某一天交易的起始价和最终价。
+
+最高价、最低价和最后交易价表示当天股票的最高价、最低价和最后交易价格。
+
+交易总量是指当天买卖的股票数量，而营业额(Lacs)是指某一特定公司在某一特定日期的营业额。
+
+要注意的另一点是，市场在周末和公共假期休市。注意上表缺失了一些日期值——2/10/2018、6/10/2018、7/10/2018。其中2号是国庆节，6号和7号是周末。
+
+损益的计算通常由股票当日的收盘价决定，因此我们将收盘价作为目标变量。让我们画出目标变量来理解它在我们的数据集中的分布:
+
+#setting index as date
+df['Date'] = pd.to_datetime(df.Date,format='%Y-%m-%d')
+df.index = df['Date']
+ 
+#plot
+plt.figure(figsize=(16,8))
+plt.plot(df['Close'], label='Close Price history')
