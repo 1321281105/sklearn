@@ -1,0 +1,202 @@
+#导入包
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+
+# 激活函数
+def tanh(x):
+    return (np.exp(x)-np.exp(-x))/(np.exp(x)+np.exp(-x))
+def de_tanh(x):
+    return (1-x**2)
+    
+    # 数据的读取
+def Data(df):
+    df.columns = ["x", "y", "h", "use", "As"]
+    longtitude = df["x"]  # 抽取前四列作为训练数据的各属性值
+    longtitude = np.array(longtitude)
+    latitude = df["y"]
+    latitude = np.array(latitude)
+    elevation = df["h"]
+    elevation = np.array(elevation)
+    functional = df["use"]
+    functional = np.array(functional)
+    ag = df["As"]
+    ag = np.array(ag)
+    return longtitude,latitude,elevation,functional,ag
+
+
+# 对数据进行归一化处理
+def Normalized(samplein,sampleout):
+    inminmax = np.array([samplein.min(axis=1).T.tolist()[0],
+                               samplein.max(axis=1).T.tolist()[0]]).transpose()  # 对应最大值最小值
+    # print("sampleinminmax:\n",sampleinminmax)
+    # print("sampleout:\n",sampleout)
+    outminmax = np.array([sampleout.min(axis=1).T.tolist()[0],
+                                sampleout.max(axis=1).T.tolist()[0]]).transpose()  # 对应最大值最小值,4*299
+    # print("sampleoutminmax:\n",sampleoutminmax)
+    innorm = (2 * (np.array(samplein.T) - inminmax.transpose()[0])
+                    / (inminmax.transpose()[1] - inminmax.transpose()[0]) - 1).transpose()  # 1*299
+    # print("sampleinnorm:\n",sampleinnorm)
+    outnorm = (2 * (np.array(sampleout.T) - outminmax.transpose()[0])
+                     / (outminmax.transpose()[1] - outminmax.transpose()[0]) - 1).transpose()
+    # print("sampleoutnorm:\n",sampleoutnorm)
+    # 给输出样本添加噪音
+    noise = 0.03 * np.random.rand(outnorm.shape[0], outnorm.shape[1])
+    outnorm += noise
+    return innorm,outnorm,outminmax
+
+
+# 初始化 w1,b1,w2,b2
+def initial():
+    scale = np.sqrt(3/((indim+outdim)*0.5))  #最大值最小值范围为-1.44~1.44
+    w1 = np.random.uniform(low=-scale, high=scale, size=[hiddenunitnum,indim])
+    b1 = np.random.uniform(low=-scale, high=scale, size=[hiddenunitnum,1])
+    w2 = np.random.uniform(low=-scale, high=scale, size=[outdim,hiddenunitnum])
+    b2 = np.random.uniform(low=-scale, high=scale, size=[outdim,1])
+    # print("scale:\n",scale)
+    # print("w1:\n",w1)
+    # print("b1",b1)
+    # print("w2:\n",w2)
+    # print("b2",b2)
+    return w1,b1,w2,b2
+
+
+# 学习训练更新权重
+def new_weight(w1,b1,w2,b2,maxepochs,sampleinnorm,sampleoutnorm,samnum,errorfinal,learnrate):
+    errhistory = []
+
+    for i in range(maxepochs):
+        print("Generation : ", i)
+        hiddenout = tanh((np.dot(w1, sampleinnorm).transpose() + b1.transpose())).transpose()  # 8*299 np.dot为矩阵的乘法
+        networkout = tanh((np.dot(w2, hiddenout).transpose() + b2.transpose())).transpose()  # 1*299
+        err = sampleoutnorm - networkout  # 1*299
+        loss = np.sum(np.abs(err)) / samnum
+        mse = np.sum(np.square(sampleoutnorm - networkout)) / len(networkout)
+        print(loss)
+        print(mse)
+        sse = sum(sum(err ** 2))
+
+        errhistory.append(sse)
+        if sse < errorfinal:
+            break
+        delta2 = err * de_tanh(networkout)
+        delta1 = np.dot(w2.transpose(), delta2) * de_tanh(hiddenout)  # hiddenout*(1-hiddenout) #8*299
+        dw2 = np.dot(delta2, hiddenout.transpose())  # 1*8
+        db2 = np.dot(delta2, np.ones((samnum, 1)))  # 1*1
+        dw1 = np.dot(delta1, sampleinnorm.transpose())  # 8*4
+        db1 = np.dot(delta1, np.ones((samnum, 1)))  # 8*1
+
+        w2 += learnrate * dw2
+        b2 += learnrate * db2
+        w1 += learnrate * dw1
+        b1 += learnrate * db1
+    # print('更新的权重w1:', w1)
+    # print('更新的偏置b1:', b1)
+    # print('更新的权重w2:', w2)
+    # print('更新的偏置b2:', b2)
+    # print("平均损失值为：", loss)
+    return w1,b1,w2,b2
+# 计算误差
+def err(output,output1):
+    mse = sum(np.square(output - output1)) / len(output)
+    mae = sum(np.abs(output - output1)) / len(output)
+    mape = sum(np.abs((output - output1) / output)) / len(output)
+    return mse,mae,mape
+
+
+# 对测试集进行预测
+def predict(w1,b1,w2,b2,inputnorm):
+    hiddenout = tanh((np.dot(w1, inputnorm).transpose() + b1.transpose())).transpose()
+    networkout = tanh((np.dot(w2, hiddenout).transpose() + b2.transpose())).transpose()
+    return networkout
+
+
+# 对预测值进行反归一化
+def Anti_Normal(sampleoutminmax,networkout):
+    diff = sampleoutminmax[:, 1] - sampleoutminmax[:, 0]
+    networkout2 = (networkout + 1) / 2
+    networkout2 = networkout2 * diff + sampleoutminmax[0][0]
+    output1 = networkout2.flatten()  # 降成一维数组
+    output1 = output1.tolist()  # output1 为预测值
+    return output1
+
+
+# 根据预测结果进行画图
+def show(output,output1):
+    fig = plt.figure(figsize=(11, 9), dpi=120)
+    plt.title('Prediction of As Content', fontdict={'weight': 'normal', 'size': 24})
+    x = range(1, 21, 1)
+    plt.plot(x, output, color="black", label="real", linewidth=2.0, linestyle="-")
+    plt.plot(x, output1, color="black", label="prediction", linewidth=2.0, linestyle="--")
+    plt.tick_params(labelsize=18)
+    plt.xlim(0, 21)
+    plt.ylim(0, 30)
+    plt.xlabel("spot", fontdict={'weight': 'normal', 'size': 20})
+    plt.ylabel("As Content(μg/g)", fontdict={'weight': 'normal', 'size': 20})
+    plt.xticks(range(1, 21, 1))
+    plt.legend(loc="upper right", prop={'size': 20})
+    plt.savefig("bp.png")
+    plt.show()
+
+
+
+if __name__ == '__main__':
+    # 1、======= 读取数据 ==========
+    # 训练集的读取
+    train = pd.read_csv("train.csv")  # 返回一个DataFrame的对象，这个是pandas的一个数据结构
+    train_longtitude, train_latitude, train_elevation, train_functional, train_ag = Data(train)
+    samplein = np.mat([train_longtitude, train_latitude, train_elevation, train_functional])
+    sampleout = np.mat([train_ag])
+    # print("samplein:\n", samplein)
+    # print("sampleout:\n",sampleout)
+    # print("samplein.shape:",samplein.shape) # 4 * 300
+    # print("sampleout.shape:",sampleout.shape) # 1 * 300
+    # 测试集的读取
+    test = pd.read_csv("test.csv")
+    test_longtitude, test_latitude, test_elevation, test_functional, test_ag = Data(test)
+    input = np.mat([test_longtitude, test_latitude,test_elevation, test_functional])
+    output = np.mat([test_ag])
+    # output = ag
+    # print("input:\n", input)
+    # print("input.shape:", input.shape)
+    # print("output:\n",output)
+    # print("output.shape:",output.shape)
+    # 2、======= 数据的归一化处理 ==========
+    # 训练集归一化处理
+    sampleinnorm, sampleoutnorm,sampleoutminmax = Normalized(samplein, sampleout)
+    # print("sampleinnorm:\n",sampleinnorm)
+    # print("sampleoutnorm:\n",sampleoutnorm)
+    # print("sampleoutminmax:\n",sampleoutminmax)
+    # 测试集归一化
+    inputnorm, outputnorm,outputminmax = Normalized(input, output)
+    # print("inputnorm:\n",inputnorm)
+    # print("outputnorm:\n",outputnorm)
+    # print("outputminmax:\n",outputminmax)
+    # 3、====== 神经网络训练 =======
+    maxepochs = 10000
+    learnrate = 0.01
+    errorfinal = 0.65 * 10 ** (-3)
+    samnum = 300
+    indim = 4
+    outdim = 1
+    hiddenunitnum = 7
+    # 参数 w1,b1,w2,b2 赋初值
+    w1,b1,w2,b2 = initial()
+    # 更新参数
+    w1,b1,w2,b3 = new_weight(w1,b1,w2,b2,maxepochs,sampleinnorm,sampleoutnorm,samnum,errorfinal,learnrate)
+    # print('更新的权重w1:', w1)
+    # print('更新的偏置b1:', b1)
+    # print('更新的权重w2:', w2)
+    # print('更新的偏置b2:', b2)
+    # 4、====== 训练好的神经网络预测测试集 ======
+    networkout = predict(w1,b1,w2,b2,inputnorm)
+    # 5、======= 反归一化 =========
+    output1 = Anti_Normal(sampleoutminmax, networkout) # list 表
+    # print("output1:\n",output1)
+    # 6、======= 计算误差 =========
+    output = test_ag # list 表
+    # print("output:\n",output)
+    mse, mae, mape = err(output,output1)
+    print("mse:",mse,"mae:",mae,"mape:",mape)
+    # 7、 ========= 出图 ===========
+    show(output,output1)
